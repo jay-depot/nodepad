@@ -19,6 +19,8 @@ import { generateGhostClient } from "@/lib/ai-ghost"
 import { exportToMarkdown, downloadMarkdown, copyToClipboard } from "@/lib/export"
 import { downloadNodepadFile, parseNodepadFile, NodepadParseError } from "@/lib/nodepad-format"
 import { detectContentType } from "@/lib/detect-content-type"
+import { getSyncClient, type SyncStatus } from "@/lib/sync-client"
+import { useSyncSettings } from "@/lib/sync-settings"
 
 function generateId() {
   return Math.random().toString(36).substring(2, 10)
@@ -57,6 +59,8 @@ export default function Page() {
   const [showHelpTooltip, setShowHelpTooltip] = useState(false)
   const helpTooltipTimer = useRef<NodeJS.Timeout | null>(null)
   const { settings, updateSettings, resolvedModelId, currentModel, isHydrated } = useAISettings()
+  const { settings: syncSettings, updateSettings: updateSyncSettings, isHydrated: syncHydrated } = useSyncSettings()
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("disconnected")
   const debounceTimers = useRef<Record<string, Record<string, NodeJS.Timeout>>>({})
 
   // ── Undo history ring (max 20 block snapshots per project) ───────────────
@@ -215,6 +219,74 @@ export default function Page() {
       localStorage.setItem("nodepad-backup", JSON.stringify(projects))
     } catch { /* quota exceeded — skip silently */ }
   }, [projects, isLoaded])
+
+  // ── Sync connection lifecycle ────────────────────────────────────────────
+  useEffect(() => {
+    if (!syncHydrated) return
+    const client = getSyncClient()
+
+    client.onStatusChange((status) => {
+      setSyncStatus(status)
+    })
+
+    if (syncSettings.enabled && activeProjectId) {
+      client.connect({
+        serverUrl: syncSettings.serverUrl,
+        authToken: syncSettings.authToken,
+        projectId: activeProjectId,
+      })
+    } else {
+      client.disconnect()
+    }
+
+    return () => {
+      // Don't disconnect on unmount — let the client manage reconnection
+    }
+  }, [syncSettings.enabled, syncSettings.serverUrl, syncSettings.authToken, activeProjectId, syncHydrated])
+
+  // ── Sync: send ops on project/block changes ─────────────────────────────
+  const prevProjectsRef = useRef<string>("")
+  useEffect(() => {
+    if (!syncSettings.enabled || !syncHydrated || !isLoaded) return
+    const serialized = JSON.stringify(projects)
+    if (serialized === prevProjectsRef.current) return
+    prevProjectsRef.current = serialized
+
+    // Debounce: only send the latest state after 2s of inactivity
+    const timer = setTimeout(() => {
+      const client = getSyncClient()
+      if (client.getStatus() !== "connected") return
+
+      // Send full state as a snapshot op
+      // In a real implementation we'd diff and send individual ops,
+      // but for now this ensures the server has the latest state
+      for (const project of projects) {
+        client.sendOp({
+          type: "project:update",
+          payload: { id: project.id, name: project.name, updatedAt: Date.now() },
+        })
+        for (const block of project.blocks) {
+          client.sendOp({
+            type: "block:create",
+            payload: {
+              id: block.id,
+              projectId: project.id,
+              text: block.text,
+              timestamp: block.timestamp,
+              contentType: block.contentType,
+              category: block.category,
+              annotation: block.annotation,
+              confidence: block.confidence ?? null,
+              isPinned: block.isPinned ?? false,
+              isUnrelated: block.isUnrelated ?? false,
+            },
+          })
+        }
+      }
+    }, 2000)
+
+    return () => clearTimeout(timer)
+  }, [projects, syncSettings.enabled, syncHydrated, isLoaded])
 
   // Hidden file input for .nodepad import — triggered from sidebar or ⌘K
   const importInputRef = useRef<HTMLInputElement>(null)
@@ -914,6 +986,9 @@ export default function Page() {
         onImportProject={() => importInputRef.current?.click()}
         aiSettings={settings}
         onUpdateAISettings={updateSettings}
+        syncSettings={syncSettings}
+        onUpdateSyncSettings={updateSyncSettings}
+        syncStatus={syncStatus}
         openToSettings={jumpToSettings}
         onSettingsOpened={() => setJumpToSettings(false)}
       />

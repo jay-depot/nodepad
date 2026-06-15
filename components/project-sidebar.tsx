@@ -22,6 +22,8 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
+  Cloud,
+  CloudOff,
 } from "lucide-react"
 import {
   AI_PROVIDER_PRESETS,
@@ -55,6 +57,10 @@ interface ProjectSidebarProps {
   // AI Settings
   aiSettings: AISettings
   onUpdateAISettings: (patch: Partial<AISettings>) => void
+  // Sync Settings
+  syncSettings: { enabled: boolean; serverUrl: string; authToken: string }
+  onUpdateSyncSettings: (patch: Partial<{ enabled: boolean; serverUrl: string; authToken: string }>) => void
+  syncStatus: "disconnected" | "connecting" | "connected" | "error"
 }
 
 export function ProjectSidebar({
@@ -69,6 +75,9 @@ export function ProjectSidebar({
   onDeleteProject,
   aiSettings,
   onUpdateAISettings,
+  syncSettings,
+  onUpdateSyncSettings,
+  syncStatus,
   openToSettings,
   onSettingsOpened,
 }: ProjectSidebarProps) {
@@ -786,6 +795,78 @@ export function ProjectSidebar({
                     </button>
                   </div>
                 )}
+
+                {/* Sync Settings */}
+                <div className="border-t border-white/5 my-2" />
+
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <label className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                      Sync
+                    </label>
+                    <button
+                      onClick={() => onUpdateSyncSettings({ enabled: !syncSettings.enabled })}
+                      className={`relative h-5 w-9 rounded-full transition-all duration-200 ${
+                        syncSettings.enabled ? "bg-primary" : "bg-white/10"
+                      }`}
+                    >
+                      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all duration-200 ${
+                        syncSettings.enabled ? "left-5" : "left-0.5"
+                      }`} />
+                    </button>
+                  </div>
+
+                  {syncSettings.enabled && (
+                    <>
+                      <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-2 focus-within:border-primary/50 transition-colors">
+                        <input
+                          type="text"
+                          value={syncSettings.serverUrl}
+                          onChange={e => onUpdateSyncSettings({ serverUrl: e.target.value })}
+                          placeholder="ws://host:port"
+                          className="flex-1 bg-transparent font-mono text-[11px] text-foreground outline-none placeholder:text-muted-foreground/40"
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-2 focus-within:border-primary/50 transition-colors">
+                        <Key className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <input
+                          type="text"
+                          value={syncSettings.authToken}
+                          onChange={e => onUpdateSyncSettings({ authToken: e.target.value })}
+                          placeholder="Auth token"
+                          className="flex-1 bg-transparent font-mono text-[11px] text-foreground outline-none placeholder:text-muted-foreground/40"
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </div>
+                      <div className={`flex items-center gap-2 rounded-md px-2.5 py-2 font-mono text-[9px] ${
+                        syncStatus === "connected"
+                          ? "bg-primary/10 border border-primary/20 text-primary"
+                          : syncStatus === "connecting"
+                          ? "bg-amber-950/30 border border-amber-800/30 text-amber-400"
+                          : syncStatus === "error"
+                          ? "bg-destructive/10 border border-destructive/20 text-destructive"
+                          : "bg-white/5 border border-white/5 text-muted-foreground"
+                      }`}>
+                        {syncStatus === "connected" ? (
+                          <Cloud className="h-3.5 w-3.5" />
+                        ) : syncStatus === "connecting" ? (
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <CloudOff className="h-3.5 w-3.5" />
+                        )}
+                        <span>
+                          {syncStatus === "connected" ? "Synced" :
+                           syncStatus === "connecting" ? "Connecting…" :
+                           syncStatus === "error" ? "Sync error" :
+                           "Disconnected"}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
 
                 {/* API Status */}
                 <div className={`flex items-center gap-2 rounded-md px-2.5 py-2 font-mono text-[9px] ${
