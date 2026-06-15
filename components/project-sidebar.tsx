@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Plus,
@@ -19,6 +19,9 @@ import {
   Save,
   FolderInput,
   Search,
+  Wifi,
+  WifiOff,
+  RefreshCw,
 } from "lucide-react"
 import {
   AI_PROVIDER_PRESETS,
@@ -80,7 +83,10 @@ export function ProjectSidebar({
   const [fetchingModels, setFetchingModels] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [modelSearch, setModelSearch] = useState("")
-  // local draft for settings (only save on "Save")
+  // Ollama connection state
+  const [ollamaRunning, setOllamaRunning] = useState<boolean | null>(null)
+  const [ollamaVersion, setOllamaVersion] = useState<string | null>(null)
+  const [ollamaChecking, setOllamaChecking] = useState(false)  // local draft for settings (only save on "Save")
   const [draft, setDraft] = useState<AISettings>(aiSettings)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -104,9 +110,80 @@ export function ProjectSidebar({
     }
   }, [openToSettings])
 
-  // Auto-fetch models when provider + key are available (debounced)
+  // Ollama — auto-detect models immediately when provider selected or page loads
+  const checkOllama = useCallback(async () => {
+    if (draft.provider !== "ollama") {
+      setOllamaRunning(null)
+      setOllamaVersion(null)
+      setOllamaChecking(false)
+      return
+    }
+    setOllamaChecking(true)
+    const isElectron = !!(window as any).electronAPI
+    try {
+      if (isElectron) {
+        const res = await (window as any).electronAPI.checkOllama()
+        setOllamaRunning(res.running)
+        setOllamaVersion(res.version)
+        if (res.running) {
+          const models = await (window as any).electronAPI.getOllamaModels()
+          setFetchedModels(models.map((m: any) => ({
+            id: m.name,
+            name: m.name,
+            description: m.details?.family
+              ? `${m.details.family} · ${m.details.parameter_size ?? "?"} params · ${m.details.quantization_level ?? "?"}`
+              : `Ollama model · ${(m.size / 1e9).toFixed(1)} GB`,
+            owned_by: "ollama",
+            isFree: true,
+          })))
+        } else {
+          setFetchedModels([])
+        }
+      } else {
+        // Browser mode: use REST API directly
+        const baseUrl = draft.customBaseUrl?.trim() || AI_PROVIDER_PRESETS.find(p => p.id === "ollama")!.baseUrl
+        const verRes = await fetch(`${baseUrl}/api/version`, { signal: AbortSignal.timeout(3000) })
+        if (verRes.ok) {
+          const verData = await verRes.json()
+          setOllamaRunning(true)
+          setOllamaVersion(verData.version)
+          const modRes = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(5000) })
+          if (modRes.ok) {
+            const modData = await modRes.json()
+            setFetchedModels((modData.models ?? []).map((m: any) => ({
+              id: m.name,
+              name: m.name,
+              description: m.details?.family
+                ? `${m.details.family} · ${m.details.parameter_size ?? "?"} params · ${m.details.quantization_level ?? "?"}`
+                : `Ollama model · ${(m.size / 1e9).toFixed(1)} GB`,
+              owned_by: "ollama",
+              isFree: true,
+            })))
+          }
+        } else {
+          setOllamaRunning(false)
+          setFetchedModels([])
+        }
+      }
+    } catch {
+      setOllamaRunning(false)
+      setFetchedModels([])
+    } finally {
+      setOllamaChecking(false)
+    }
+  }, [draft.provider, draft.customBaseUrl])
+
+  // Auto-fetch models when provider + key are available (debounced), or check Ollama
   useEffect(() => {
-    if (!showSettings || !draft.apiKey.trim()) {
+    if (!showSettings) return
+
+    // Ollama: no key needed, check connection immediately
+    if (draft.provider === "ollama") {
+      checkOllama()
+      return
+    }
+
+    if (!draft.apiKey.trim()) {
       setFetchedModels([])
       setFetchingModels(false)
       setFetchError(null)
@@ -135,7 +212,7 @@ export function ProjectSidebar({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [showSettings, draft.provider, draft.apiKey, draft.customBaseUrl])
+  }, [showSettings, draft.provider, draft.apiKey, draft.customBaseUrl, checkOllama])
 
   const handleRename = (id: string) => {
     if (editName.trim()) onRenameProject(id, editName.trim())
@@ -442,6 +519,61 @@ export function ProjectSidebar({
                   </p>
                 </div>
 
+                {/* Ollama Connection Status */}
+                {draft.provider === "ollama" && (
+                  <div className="flex flex-col gap-2">
+                    <label className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                      Connection
+                    </label>
+                    <div className={`flex items-center gap-2 rounded-md border px-2.5 py-2 ${
+                      ollamaRunning === true
+                        ? "border-primary/30 bg-primary/5"
+                        : ollamaRunning === false
+                        ? "border-destructive/30 bg-destructive/5"
+                        : "border-white/10 bg-white/[0.04]"
+                    }`}>
+                      {ollamaChecking ? (
+                        <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
+                      ) : ollamaRunning === true ? (
+                        <Wifi className="h-3.5 w-3.5 text-primary" />
+                      ) : ollamaRunning === false ? (
+                        <WifiOff className="h-3.5 w-3.5 text-destructive" />
+                      ) : (
+                        <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />
+                      )}
+                      <div className="flex-1">
+                        <div className="font-mono text-[11px] font-bold text-foreground">
+                          {ollamaChecking
+                            ? "Checking…"
+                            : ollamaRunning === true
+                            ? `Ollama ${ollamaVersion ? `v${ollamaVersion}` : ""} — Connected`
+                            : ollamaRunning === false
+                            ? "Ollama not running"
+                            : "Checking connection…"}
+                        </div>
+                        {ollamaRunning === true && fetchedModels.length > 0 && (
+                          <div className="font-mono text-[9px] text-muted-foreground mt-0.5">
+                            {fetchedModels.length} model{fetchedModels.length !== 1 ? "s" : ""} available
+                          </div>
+                        )}
+                        {ollamaRunning === false && (
+                          <div className="font-mono text-[9px] text-destructive/70 mt-0.5">
+                            Start Ollama with <code className="text-[9px]">ollama serve</code> or launch the Ollama app
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={checkOllama}
+                        disabled={ollamaChecking}
+                        className="p-1 hover:bg-white/10 rounded-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30"
+                        title="Refresh connection"
+                      >
+                        <RefreshCw className={`h-3 w-3 ${ollamaChecking ? "animate-spin" : ""}`} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Model Selector */}
                 <div className="flex flex-col gap-2">
                   <label className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
@@ -637,12 +769,28 @@ export function ProjectSidebar({
 
                 {/* API Status */}
                 <div className={`flex items-center gap-2 rounded-md px-2.5 py-2 font-mono text-[9px] ${
-                  draft.apiKey
+                  draft.provider === "ollama"
+                    ? ollamaRunning === true
+                      ? "bg-primary/10 border border-primary/20 text-primary"
+                      : "bg-destructive/10 border border-destructive/20 text-destructive"
+                    : draft.apiKey
                     ? "bg-primary/10 border border-primary/20 text-primary"
                     : "bg-white/5 border border-white/5 text-muted-foreground"
                 }`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${draft.apiKey ? "bg-primary animate-pulse" : "bg-white/30"}`} />
-                  {draft.apiKey ? `${currentPreset.label} — API key configured` : "No API key — AI disabled"}
+                  <span className={`h-1.5 w-1.5 rounded-full ${
+                    draft.provider === "ollama"
+                      ? ollamaRunning === true ? "bg-primary animate-pulse" : "bg-destructive"
+                      : draft.apiKey ? "bg-primary animate-pulse" : "bg-white/30"
+                  }`} />
+                  {draft.provider === "ollama"
+                    ? ollamaRunning === true
+                      ? `Ollama — ${fetchedModels.length} model${fetchedModels.length !== 1 ? "s" : ""} available`
+                      : ollamaRunning === false
+                      ? "Ollama — not connected"
+                      : "Ollama — checking…"
+                    : draft.apiKey
+                    ? `${currentPreset.label} — API key configured`
+                    : "No API key — AI disabled"}
                 </div>
               </motion.div>
             )}

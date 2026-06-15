@@ -1,6 +1,6 @@
 "use client"
 
-import { loadAIConfig, getBaseUrl, getProviderHeaders } from "@/lib/ai-settings"
+import { loadAIConfig, getChatEndpoint, getProviderHeaders } from "@/lib/ai-settings"
 import { parseProviderError } from "@/lib/ai-enrich"
 
 export interface GhostContext {
@@ -20,9 +20,6 @@ export async function generateGhostClient(
 ): Promise<GhostResult> {
   const config = loadAIConfig()
   if (!config) throw new Error("No API key configured")
-
-  // Ghost falls back to a lighter model if none is set
-  const model = config.modelId || "google/gemini-2.0-flash-lite-001"
 
   const categories = [...new Set(context.map(c => c.category).filter(Boolean))]
 
@@ -55,16 +52,21 @@ Return ONLY valid JSON:
   // Cap output to keep cost low and avoid 402 on limited-credit accounts.
   const MAX_GHOST_OUTPUT_TOKENS = 220
 
-  const baseUrl = getBaseUrl(config)
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const chatEndpoint = getChatEndpoint(config)
+  const response = await fetch(chatEndpoint, {
     method: "POST",
     headers: getProviderHeaders(config),
     body: JSON.stringify({
       model,
       max_tokens: MAX_GHOST_OUTPUT_TOKENS,
       messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.7,
+      // Ollama's /v1/chat/completions doesn't support response_format — rely on prompt
+      ...(config.provider === "ollama"
+        ? { temperature: 0.7 }
+        : {
+            response_format: { type: "json_object" },
+            temperature: 0.7,
+          }),
     }),
   })
 

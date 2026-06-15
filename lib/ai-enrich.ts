@@ -1,7 +1,7 @@
 "use client"
 
 import { detectContentType } from "@/lib/detect-content-type"
-import { loadAIConfig, getBaseUrl, getProviderHeaders, getModelsForProvider } from "@/lib/ai-settings"
+import { loadAIConfig, getChatEndpoint, getProviderHeaders, getModelsForProvider } from "@/lib/ai-settings"
 import type { ContentType } from "@/lib/content-types"
 
 // ── Provider error parser ─────────────────────────────────────────────────────
@@ -350,8 +350,8 @@ You have live web access. For this note type, include 1–2 real source citation
   // Enrichment JSON is compact — annotation ~120 words plus fields fits in 1200.
   const MAX_ENRICH_OUTPUT_TOKENS = 1200
 
-  const baseUrl = getBaseUrl(config)
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const chatEndpoint = getChatEndpoint(config)
+  const response = await fetch(chatEndpoint, {
     method: "POST",
     headers: getProviderHeaders(config),
     body: JSON.stringify({
@@ -364,13 +364,17 @@ You have live web access. For this note type, include 1–2 real source citation
       // OpenAI search-preview models reject both response_format AND temperature;
       // when web_search_options is present, omit both and rely on the schemaHint
       // in the system prompt to get structured JSON output.
+      // Ollama doesn't support response_format at all via /v1/chat/completions
+      // — rely on the system prompt to get JSON back.
       ...(webSearchOptions === undefined
-        ? {
-            response_format: useStrictSchema
-              ? { type: "json_schema", json_schema: JSON_SCHEMA }
-              : { type: "json_object" },
-            temperature: 0.1,
-          }
+        ? config.provider === "ollama"
+          ? { temperature: 0.1 }
+          : {
+              response_format: useStrictSchema
+                ? { type: "json_schema", json_schema: JSON_SCHEMA }
+                : { type: "json_object" },
+              temperature: 0.1,
+            }
         : { web_search_options: webSearchOptions }),
     }),
   })

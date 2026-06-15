@@ -12,7 +12,7 @@ export interface AIModel {
   groundingModelId?: string
 }
 
-export type AIProvider = "openrouter" | "openai" | "zai"
+export type AIProvider = "openrouter" | "openai" | "zai" | "ollama"
 
 export interface AIProviderPreset {
   id: AIProvider
@@ -43,6 +43,13 @@ export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
     baseUrl: "https://api.z.ai/api/paas/v4",
     keyUrl: "https://z.ai/manage-apikey/apikey-list",
     keyPlaceholder: "Your Z.ai API key",
+  },
+  {
+    id: "ollama",
+    label: "Ollama",
+    baseUrl: "http://127.0.0.1:11434",
+    keyUrl: "",
+    keyPlaceholder: "No key required — Ollama runs locally",
   },
 ]
 
@@ -177,6 +184,7 @@ export const ZAI_MODELS: AIModel[] = [
 export function getModelsForProvider(provider: AIProvider): AIModel[] {
   if (provider === "openai") return OPENAI_MODELS
   if (provider === "zai")    return ZAI_MODELS
+  if (provider === "ollama") return [] // fetched dynamically
   return AI_MODELS // openrouter + safe fallback for any stale localStorage value
 }
 
@@ -200,6 +208,28 @@ export async function fetchModelsFromProvider(
   customBaseUrl?: string,
 ): Promise<FetchedModel[]> {
   const baseUrl = customBaseUrl?.trim() || getPreset(provider).baseUrl
+
+  // Ollama uses /api/tags, not /v1/models
+  if (provider === "ollama") {
+    try {
+      const res = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(5000) })
+      if (!res.ok) return []
+      const data = await res.json()
+      return (data.models ?? []).map((m: any) => ({
+        id: m.name,
+        name: m.name,
+        description: m.details?.family
+          ? `${m.details.family} · ${m.details.parameter_size ?? "?"} params · ${m.details.quantization_level ?? "?"}`
+          : `Ollama model · ${(m.size / 1e9).toFixed(1)} GB`,
+        owned_by: "ollama",
+        isFree: true,
+        contextLength: m.details?.family === "llama" ? 4096 : undefined,
+      }))
+    } catch {
+      return []
+    }
+  }
+
   const headers: Record<string, string> = {
     "Authorization": `Bearer ${apiKey}`,
   }
@@ -269,7 +299,8 @@ export interface AIConfig {
 
 export function loadAIConfig(): AIConfig | null {
   const s = loadSettings()
-  if (!s.apiKey) return null
+  // Ollama doesn't require an API key
+  if (s.provider !== "ollama" && !s.apiKey) return null
   const models = getModelsForProvider(s.provider)
   const model = models.find(m => m.id === s.modelId)
   // Use the matched model's id if found; otherwise fall back to the first model
@@ -286,15 +317,23 @@ export function loadAIConfig(): AIConfig | null {
 }
 
 export function getBaseUrl(config: AIConfig): string {
+  if (config.provider === "ollama") return (config.customBaseUrl?.trim() || AI_PROVIDER_PRESETS.find(p => p.id === "ollama")!.baseUrl).replace(/\/+$/, "")
   const custom = config.customBaseUrl?.trim()
   return custom || getPreset(config.provider).baseUrl
+}
+
+export function getChatEndpoint(config: AIConfig): string {
+  const base = getBaseUrl(config)
+  if (config.provider === "ollama") return `${base}/v1/chat/completions`
+  return `${base}/chat/completions`
 }
 
 export function getProviderHeaders(config: AIConfig): Record<string, string> {
   const base: Record<string, string> = {
     "Content-Type": "application/json",
-    "Authorization": `Bearer ${config.apiKey}`,
   }
+  if (config.provider === "ollama") return base // no auth header needed
+  base["Authorization"] = `Bearer ${config.apiKey}`
   if (config.provider === "openrouter") {
     base["HTTP-Referer"] = "https://nodepad.space"
     base["X-Title"] = "nodepad"

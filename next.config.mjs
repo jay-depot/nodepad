@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "standalone",
   typescript: {
     // Build errors are intentionally ignored — see CLAUDE.md
     ignoreBuildErrors: true,
@@ -51,7 +52,7 @@ const nextConfig = {
               // OpenAI-compatible endpoints) are not blocked by CSP. Enumerating
               // specific provider domains is incompatible with a custom-URL feature.
               // http://localhost:* covers local providers (Ollama, LM Studio, vLLM).
-              "connect-src 'self' https: http://localhost:*",
+              "connect-src 'self' https: http://localhost:* http://127.0.0.1:*",
               "img-src 'self' data: blob: https://i.ytimg.com",
               "font-src 'self' data:",
               "frame-src https://www.youtube-nocookie.com https://www.youtube.com",
