@@ -175,3 +175,11 @@ export function getSyncClient(): SyncClient {
   if (!_instance) _instance = new SyncClient()
   return _instance
 }
+
+/**
+ * Create a fresh sync client. Use this instead of getSyncClient() when you
+ * need to avoid stale instance references across HMR/hot reloads.
+ */
+export function createSyncClient(): SyncClient {
+  return new SyncClient()
+}

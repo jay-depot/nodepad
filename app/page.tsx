@@ -19,7 +19,7 @@ import { generateGhostClient } from "@/lib/ai-ghost"
 import { exportToMarkdown, downloadMarkdown, copyToClipboard } from "@/lib/export"
 import { downloadNodepadFile, parseNodepadFile, NodepadParseError } from "@/lib/nodepad-format"
 import { detectContentType } from "@/lib/detect-content-type"
-import { getSyncClient, type SyncStatus } from "@/lib/sync-client"
+import { createSyncClient, type SyncStatus } from "@/lib/sync-client"
 import { useSyncSettings } from "@/lib/sync-settings"
 
 function generateId() {
@@ -221,9 +221,16 @@ export default function Page() {
   }, [projects, isLoaded])
 
   // ── Sync connection lifecycle ────────────────────────────────────────────
+  const syncClientRef = useRef<ReturnType<typeof createSyncClient> | null>(null)
   useEffect(() => {
     if (!syncHydrated) return
-    const client = getSyncClient()
+
+    // Always create a fresh client to avoid stale HMR references
+    if (syncClientRef.current) {
+      syncClientRef.current.disconnect()
+    }
+    const client = createSyncClient()
+    syncClientRef.current = client
 
     client.onStatusChange((status) => {
       setSyncStatus(status)
@@ -235,12 +242,10 @@ export default function Page() {
         authToken: syncSettings.authToken,
         projectId: activeProjectId,
       })
-    } else {
-      client.disconnect()
     }
 
     return () => {
-      // Don't disconnect on unmount — let the client manage reconnection
+      client.disconnect()
     }
   }, [syncSettings.enabled, syncSettings.serverUrl, syncSettings.authToken, activeProjectId, syncHydrated])
 
@@ -254,8 +259,8 @@ export default function Page() {
 
     // Debounce: only send the latest state after 2s of inactivity
     const timer = setTimeout(() => {
-      const client = getSyncClient()
-      if (client.getStatus() !== "connected") return
+      const client = syncClientRef.current
+      if (!client || client.getStatus() !== "connected") return
 
       // Send full state as a snapshot op
       // In a real implementation we'd diff and send individual ops,
