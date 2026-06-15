@@ -1,6 +1,6 @@
 # nodepad
 
-**A design experiment in spatial, AI-augmented thinking.**
+**A design experiment in spatial, AI-augmented thinking.** *Hacked.*
 
 [![Watch the intro](https://img.youtube.com/vi/nCLY7rHAjWE/maxresdefault.jpg)](https://www.youtube.com/watch?v=nCLY7rHAjWE)
 
@@ -11,6 +11,19 @@
 Most AI tools are built around a chat interface: you ask, it answers, you ask again. The interaction is sequential, conversational, and optimised for producing output. nodepad is built around a different premise: that thinking is spatial and associative, and that AI is most useful when it works quietly in the background rather than at the centre of attention.
 
 You add notes. The AI classifies them, finds connections between them, surfaces what you haven't said yet, and occasionally synthesises an emergent insight from the whole canvas. You stay in control of the space. The AI earns its place by being genuinely useful rather than prominent.
+
+---
+
+## This fork
+
+This is a heavily modified fork of the original [nodepad](https://github.com/mskayyali/nodepad). What's changed:
+
+- **Electron app** — runs as a standalone desktop application (not just a browser tab). Includes native window management, system tray, and app packaging.
+- **Ollama support** — first-class provider with auto-detection of running models, connection status UI, and no API key required. Works with any local Ollama instance.
+- **Sync server integration** — toggle in Settings to connect to [nodepad-sync-server](https://github.com/jay-depot/nodepad-sync-server) for real-time multi-device sync and AI-agent access via MCP.
+- Removed: Umami analytics, intro video from layout, opengraph-image edge route.
+
+All original credit goes to [Saleh Kayyali](http://mskayyali.com).
 
 ---
 
@@ -26,28 +39,49 @@ Three views: **tiling** (spatial BSP grid), **kanban** (grouped by type), **grap
 
 ## Setup
 
-**Requirements**: a desktop browser and an API key from one of the supported providers.
+### Development
 
 ```bash
-git clone https://github.com/mskayyali/nodepad.git
+git clone https://github.com/jay-depot/nodepad.git
 cd nodepad
 npm install
-npm run dev
+npm run electron:dev   # starts Next.js dev server + Electron
 ```
 
-Open [localhost:3000](http://localhost:3000).
+### Production build
 
-**Add your API key**: click the menu icon (top-left) → Settings → choose your provider → paste your key. The key is stored in your browser's `localStorage` and goes directly to the AI provider — it never passes through any server.
+```bash
+npm run build
+npm run start:production   # standalone Next.js server + Electron
+```
 
-**Enable web grounding** (optional): toggle "Web grounding" in Settings to let the AI cite real sources for claims, questions, and references. Supported on OpenRouter `:online` models and OpenAI search-preview models.
+### Package for distribution
+
+```bash
+npm run dist   # electron-builder — produces AppImage/deb, dmg, nsis
+```
+
+### Sync server (optional)
+
+For multi-device sync and MCP access, run [nodepad-sync-server](https://github.com/jay-depot/nodepad-sync-server) alongside this app.
 
 ---
 
 ## Providers & Models
 
-Select provider and model from the sidebar Settings panel. Each provider remembers its key independently — switching providers and back restores your key. Once a key is entered, the model picker fetches all models available on your account and lets you search and select any of them — not just the presets listed below.
+Select provider and model from the sidebar Settings panel. Each provider remembers its key independently — switching providers and back restores your key. Once a key is entered, the model picker fetches all models available on your account and lets you search and select any of them.
 
 **Custom base URL**: override the provider endpoint in Settings to use local or self-hosted models (Ollama, LM Studio, vLLM, or any OpenAI-compatible API).
+
+### Ollama *(local, no key required)*
+Auto-detects running models from your local Ollama instance. Connection status shown in Settings. Pull models with `ollama pull <model>`.
+
+| Model | Notes |
+|---|---|
+| `llama3.2` | Fast, good all-rounder |
+| `deepseek-r1` | Strong reasoning |
+| `qwen2.5` | Good structured output |
+| `mistral` | Lightweight, fast |
 
 ### OpenRouter *(default)*
 Access to all major models through a single key. Create a free account at [openrouter.ai](https://openrouter.ai) — use the free-tier models below with no credits, or add credits for GPT-4o, Claude, and Gemini.
@@ -109,22 +143,13 @@ Everything lives in your browser. No account, no server, no database.
 - A silent rolling backup is written on every change to `nodepad-backup`
 - Export to `.md` or `.nodepad` (versioned JSON) via `⌘K`
 - Import `.nodepad` files via the sidebar
+- With the sync server enabled, data is also mirrored to the server
 
 ---
 
 ## Tech
 
-Next.js · React 19 · TypeScript · Tailwind CSS v4 · D3.js · Framer Motion
-
----
-
-## Contributing
-
-Pull requests are welcome. I go through them regularly. Some will be merged, others may stay open.
-
----
-
-A design experiment by [Saleh Kayyali](http://mskayyali.com).
+Next.js · React 19 · TypeScript · Tailwind CSS v4 · D3.js · Framer Motion · Electron · better-sqlite3
 
 ---
 
