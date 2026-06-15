@@ -42,9 +42,9 @@ export class SyncClient {
   private pingTimer: ReturnType<typeof setInterval> | null = null
   private destroyed = false
 
-  private onOp: SyncHandler | null = null
-  private onSnapshot: SnapshotHandler | null = null
-  private onStatusChange: StatusHandler | null = null
+  private _onOp: SyncHandler | null = null
+  private _onSnapshot: SnapshotHandler | null = null
+  private _onStatusChange: StatusHandler | null = null
 
   connect(config: SyncConfig): void {
     if (this.ws) this.disconnect()
@@ -112,9 +112,9 @@ export class SyncClient {
     }))
   }
 
-  onOpReceived(handler: SyncHandler): void { this.onOp = handler }
-  onSnapshotReceived(handler: SnapshotHandler): void { this.onSnapshot = handler }
-  onStatusChange(handler: StatusHandler): void { this.onStatusChange = handler }
+  onOpReceived(handler: SyncHandler): void { this._onOp = handler }
+  onSnapshotReceived(handler: SnapshotHandler): void { this._onSnapshot = handler }
+  onStatusChange(handler: StatusHandler): void { this._onStatusChange = handler }
 
   getStatus(): SyncStatus { return this.status }
 
@@ -122,7 +122,7 @@ export class SyncClient {
     switch (msg.type) {
       case "snapshot":
         this.lastSeq = msg.lastSeq || 0
-        this.onSnapshot?.({
+        this._onSnapshot?.({
           projects: msg.projects || [],
           blocks: msg.blocks || [],
           edges: msg.edges || [],
@@ -134,7 +134,7 @@ export class SyncClient {
 
       case "op":
         this.lastSeq = msg.seq
-        this.onOp?.(msg.op)
+        this._onOp?.(msg.op)
         break
 
       case "ack":
@@ -145,7 +145,7 @@ export class SyncClient {
         // Catchup ops on reconnect
         for (const opMsg of msg.ops || []) {
           this.lastSeq = opMsg.seq
-          this.onOp?.(opMsg.op)
+          this._onOp?.(opMsg.op)
         }
         break
 
@@ -158,7 +158,7 @@ export class SyncClient {
   private setStatus(status: SyncStatus, error?: string): void {
     if (this.status === status) return
     this.status = status
-    this.onStatusChange?.(status, error)
+    this._onStatusChange?.(status, error)
   }
 
   private clearTimers(): void {
@@ -181,5 +181,7 @@ export function getSyncClient(): SyncClient {
  * need to avoid stale instance references across HMR/hot reloads.
  */
 export function createSyncClient(): SyncClient {
-  return new SyncClient()
+  const client = new SyncClient()
+  console.log("[sync] createSyncClient methods:", Object.getOwnPropertyNames(Object.getPrototypeOf(client)))
+  return client
 }
