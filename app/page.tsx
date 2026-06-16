@@ -238,24 +238,62 @@ export default function Page() {
 
     // Apply incoming ops from the server (e.g. blocks created via MCP)
     client.onSnapshotReceived((snapshot) => {
-      if (snapshot.blocks.length === 0) return
-      setProjects(prev => prev.map(p => {
-        if (p.id !== activeProjectId) return p
-        // Merge: server is authoritative. For blocks that exist in both
-        // places, keep whichever has the newer timestamp (last-write-wins).
-        // For blocks only on one side, include them.
-        const localById = new Map(p.blocks.map(b => [b.id, b]))
-        for (const sb of snapshot.blocks) {
-          const existing = localById.get(sb.id)
-          if (!existing || (sb.timestamp ?? 0) > (existing.timestamp ?? 0)) {
-            localById.set(sb.id, sb)
+      if (snapshot.blocks.length === 0 && snapshot.projects.length === 0) return
+      setProjects(prev => {
+        // Merge new projects from server
+        const localById = new Map(prev.map(p => [p.id, p]))
+        for (const sp of snapshot.projects) {
+          if (!localById.has(sp.id)) {
+            localById.set(sp.id, {
+              id: sp.id,
+              name: sp.name || "New Space",
+              blocks: [],
+              collapsedIds: [],
+              ghostNotes: [],
+            })
           }
         }
-        return { ...p, blocks: [...localById.values()] }
-      }))
+        // Merge blocks into their respective projects
+        const blockMap = new Map<string, any[]>()
+        for (const sb of snapshot.blocks) {
+          const pid = sb.projectId
+          if (!blockMap.has(pid)) blockMap.set(pid, [])
+          blockMap.get(pid)!.push(sb)
+        }
+        for (const [pid, serverBlocks] of blockMap) {
+          const local = localById.get(pid)
+          if (!local) continue
+          const localBlockMap = new Map(local.blocks.map(b => [b.id, b]))
+          for (const sb of serverBlocks) {
+            const existing = localBlockMap.get(sb.id)
+            if (!existing || (sb.timestamp ?? 0) > (existing.timestamp ?? 0)) {
+              localBlockMap.set(sb.id, sb)
+            }
+          }
+          localById.set(pid, { ...local, blocks: [...localBlockMap.values()] })
+        }
+        return [...localById.values()]
+      })
     })
 
     client.onOpReceived((op) => {
+      if (op.type === "project:create") {
+        setProjects(prev => {
+          if (prev.some(p => p.id === op.payload.id)) return prev
+          return [...prev, {
+            id: op.payload.id,
+            name: op.payload.name || "New Space",
+            blocks: [],
+            collapsedIds: [],
+            ghostNotes: [],
+          }]
+        })
+      }
+      if (op.type === "project:update") {
+        setProjects(prev => prev.map(p =>
+          p.id === op.payload.id ? { ...p, name: op.payload.name || p.name } : p
+        ))
+      }
       if (op.type === "block:create") {
         setProjects(prev => prev.map(p => {
           if (p.id !== op.payload.projectId) return p
