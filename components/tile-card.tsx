@@ -590,7 +590,7 @@ export const TileCard = memo(function TileCard({
 
       {effectiveCollapsed && (
         <div className="flex-1 px-3 py-1.5 overflow-hidden">
-          <p className="text-[11px] leading-relaxed font-medium text-foreground/50 line-clamp-2 italic">
+          <p className="text-[11px] leading-relaxed font-medium text-foreground/50 line-clamp-2 italic whitespace-pre-wrap">
             {block.text}
           </p>
         </div>
@@ -873,20 +873,20 @@ function renderBody(
           className="pl-3"
           style={{ borderLeft: `2px solid ${accent}`, opacity: 0.9 }}
         >
-          <p className="text-base italic leading-relaxed text-foreground">
+          <p className="text-base italic leading-relaxed text-foreground whitespace-pre-wrap">
             {linkifyText(text)}
           </p>
         </div>
       )
     case "italic":
       return (
-        <p className="text-base italic font-bold leading-relaxed text-foreground">
+        <p className="text-base italic font-bold leading-relaxed text-foreground whitespace-pre-wrap">
           {linkifyText(text)}
         </p>
       )
     case "muted-italic":
       return (
-        <p className="text-base italic font-bold leading-relaxed text-muted-foreground">
+        <p className="text-base italic font-bold leading-relaxed text-muted-foreground whitespace-pre-wrap">
           {linkifyText(text)}
         </p>
       )
@@ -905,7 +905,7 @@ function renderBody(
             {isDone && <Check className="h-2.5 w-2.5" style={{ color: "var(--background)" }} />}
           </div>
           <p
-            className="text-sm font-bold leading-relaxed text-foreground"
+            className="text-sm font-bold leading-relaxed text-foreground whitespace-pre-wrap"
             style={{
               textDecoration: isDone ? "line-through" : "none",
               opacity: isDone ? 0.6 : 1,
@@ -919,7 +919,7 @@ function renderBody(
     case "thesis":
       return (
         <div className="flex flex-col gap-4">
-          <p className="text-lg font-medium leading-relaxed tracking-tight text-foreground prose-invert">
+          <p className="text-lg font-medium leading-relaxed tracking-tight text-foreground prose-invert whitespace-pre-wrap">
             {linkifyText(text)}
           </p>
           <div className="h-px w-full bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
@@ -927,7 +927,7 @@ function renderBody(
       )
     default:
       return (
-        <p className="text-base font-bold leading-relaxed text-foreground">
+        <p className="text-base font-bold leading-relaxed text-foreground whitespace-pre-wrap">
           {linkifyText(text)}
         </p>
       )
