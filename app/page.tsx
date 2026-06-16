@@ -236,6 +236,34 @@ export default function Page() {
       setSyncStatus(status)
     })
 
+    // Apply incoming ops from the server (e.g. blocks created via MCP)
+    client.onSnapshotReceived((snapshot) => {
+      if (snapshot.blocks.length === 0) return
+      setProjects(prev => prev.map(p => {
+        if (p.id !== activeProjectId) return p
+        // Merge server blocks into local state — keep local blocks that
+        // aren't on the server, and add server blocks that aren't local
+        const localIds = new Set(p.blocks.map(b => b.id))
+        const serverIds = new Set(snapshot.blocks.map(b => b.id))
+        const merged = [
+          ...p.blocks.filter(b => !serverIds.has(b.id)),
+          ...snapshot.blocks.filter(b => !localIds.has(b.id)),
+        ]
+        return { ...p, blocks: merged }
+      }))
+    })
+
+    client.onOpReceived((op) => {
+      if (op.type === "block:create") {
+        setProjects(prev => prev.map(p => {
+          if (p.id !== op.payload.projectId) return p
+          // Only add if we don't already have it
+          if (p.blocks.some(b => b.id === op.payload.id)) return p
+          return { ...p, blocks: [...p.blocks, op.payload] }
+        }))
+      }
+    })
+
     if (syncSettings.enabled && activeProjectId) {
       client.connect({
         serverUrl: syncSettings.serverUrl,
