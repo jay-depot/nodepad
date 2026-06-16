@@ -241,13 +241,14 @@ export default function Page() {
       if (snapshot.blocks.length === 0) return
       setProjects(prev => prev.map(p => {
         if (p.id !== activeProjectId) return p
-        // Merge server blocks into local state — keep local blocks that
-        // aren't on the server, and add server blocks that aren't local
-        const localIds = new Set(p.blocks.map(b => b.id))
+        // Only apply snapshot if the client has no local blocks for this
+        // project (first-time sync). Otherwise the snapshot is stale — the
+        // debounced push hasn't sent local blocks yet, and applying it would
+        // clobber local state.
+        if (p.blocks.length > 0) return p
         const serverIds = new Set(snapshot.blocks.map(b => b.id))
         const merged = [
-          ...p.blocks.filter(b => !serverIds.has(b.id)),
-          ...snapshot.blocks.filter(b => !localIds.has(b.id)),
+          ...snapshot.blocks.filter(b => !p.blocks.some(lb => lb.id === b.id)),
         ]
         return { ...p, blocks: merged }
       }))
