@@ -241,16 +241,17 @@ export default function Page() {
       if (snapshot.blocks.length === 0) return
       setProjects(prev => prev.map(p => {
         if (p.id !== activeProjectId) return p
-        // Only apply snapshot if the client has no local blocks for this
-        // project (first-time sync). Otherwise the snapshot is stale — the
-        // debounced push hasn't sent local blocks yet, and applying it would
-        // clobber local state.
-        if (p.blocks.length > 0) return p
-        const serverIds = new Set(snapshot.blocks.map(b => b.id))
-        const merged = [
-          ...snapshot.blocks.filter(b => !p.blocks.some(lb => lb.id === b.id)),
-        ]
-        return { ...p, blocks: merged }
+        // Merge: server is authoritative. For blocks that exist in both
+        // places, keep whichever has the newer timestamp (last-write-wins).
+        // For blocks only on one side, include them.
+        const localById = new Map(p.blocks.map(b => [b.id, b]))
+        for (const sb of snapshot.blocks) {
+          const existing = localById.get(sb.id)
+          if (!existing || (sb.timestamp ?? 0) > (existing.timestamp ?? 0)) {
+            localById.set(sb.id, sb)
+          }
+        }
+        return { ...p, blocks: [...localById.values()] }
       }))
     })
 
@@ -258,8 +259,12 @@ export default function Page() {
       if (op.type === "block:create") {
         setProjects(prev => prev.map(p => {
           if (p.id !== op.payload.projectId) return p
-          // Only add if we don't already have it
-          if (p.blocks.some(b => b.id === op.payload.id)) return p
+          // Last-write-wins: replace if newer, skip if older
+          const existing = p.blocks.find(b => b.id === op.payload.id)
+          if (existing && (op.payload.timestamp ?? 0) <= (existing.timestamp ?? 0)) return p
+          if (existing) {
+            return { ...p, blocks: p.blocks.map(b => b.id === op.payload.id ? op.payload : b) }
+          }
           return { ...p, blocks: [...p.blocks, op.payload] }
         }))
       }
