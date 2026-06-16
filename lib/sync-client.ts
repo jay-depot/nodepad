@@ -55,10 +55,28 @@ export class SyncClient {
 
   private doConnect(): void {
     if (!this.config || this.destroyed) return
-    this.setStatus("connecting")
 
     const url = `${this.config.serverUrl}?token=${encodeURIComponent(this.config.authToken)}`
-    this.ws = new WebSocket(url)
+
+    // Validate URL before creating WebSocket — invalid URLs throw synchronously
+    try {
+      new URL(url)
+    } catch {
+      this.setStatus("error", `Invalid server URL: ${this.config.serverUrl}`)
+      return
+    }
+
+    this.setStatus("connecting")
+
+    let ws: WebSocket
+    try {
+      ws = new WebSocket(url)
+    } catch (err) {
+      this.setStatus("error", `Failed to create WebSocket: ${(err as Error).message}`)
+      return
+    }
+
+    this.ws = ws
 
     this.ws.onopen = () => {
       if (this.destroyed) { this.ws?.close(); return }
