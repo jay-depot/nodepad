@@ -268,6 +268,17 @@ export default function Page() {
           return { ...p, blocks: [...p.blocks, op.payload] }
         }))
       }
+      if (op.type === "block:update") {
+        setProjects(prev => prev.map(p => {
+          if (p.id !== op.payload.projectId) return p
+          return {
+            ...p,
+            blocks: p.blocks.map(b =>
+              b.id === op.payload.id ? { ...b, ...op.payload } : b
+            ),
+          }
+        }))
+      }
     })
 
     if (syncSettings.enabled && activeProjectId) {
