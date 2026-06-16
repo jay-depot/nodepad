@@ -52,7 +52,7 @@ const nextConfig = {
               // OpenAI-compatible endpoints) are not blocked by CSP. Enumerating
               // specific provider domains is incompatible with a custom-URL feature.
               // http://localhost:* covers local providers (Ollama, LM Studio, vLLM).
-              "connect-src 'self' https: http://localhost:* http://127.0.0.1:*",
+              "connect-src 'self' https: http: ws: wss:",
               "img-src 'self' data: blob: https://i.ytimg.com",
               "font-src 'self' data:",
               "frame-src https://www.youtube-nocookie.com https://www.youtube.com",
