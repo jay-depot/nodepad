@@ -48,6 +48,7 @@ export interface NodepadFile {
     blocks: NodepadBlock[]
     collapsedIds: string[]
     ghostNotes: NodepadGhostNote[]
+    edges?: { sourceBlockId: string; targetBlockId: string }[]
     lastGhostTexts?: string[]
     lastGhostBlockCount?: number
     lastGhostTimestamp?: number
@@ -63,6 +64,7 @@ export function serialiseProject(project: {
   blocks: any[]
   collapsedIds: string[]
   ghostNotes?: any[]
+  edges?: { sourceBlockId: string; targetBlockId: string }[]
   lastGhostTexts?: string[]
   lastGhostBlockCount?: number
   lastGhostTimestamp?: number
@@ -80,6 +82,7 @@ export function serialiseProject(project: {
         category: g.category,
         isGenerating: false,          // never persist a generating state
       })),
+      edges: project.edges ?? [],
       lastGhostTexts: project.lastGhostTexts,
       lastGhostBlockCount: project.lastGhostBlockCount,
       lastGhostTimestamp: project.lastGhostTimestamp,
@@ -142,6 +145,7 @@ export function parseNodepadFile(
   blocks: any[]
   collapsedIds: string[]
   ghostNotes: any[]
+  edges: { sourceBlockId: string; targetBlockId: string }[]
   lastGhostTexts?: string[]
   lastGhostBlockCount?: number
   lastGhostTimestamp?: number
@@ -181,6 +185,7 @@ export function parseNodepadFile(
     })),
     collapsedIds: Array.isArray(src.collapsedIds) ? src.collapsedIds : [],
     ghostNotes:   Array.isArray(src.ghostNotes)   ? src.ghostNotes   : [],
+    edges:        Array.isArray(src.edges)         ? src.edges        : [],
     lastGhostTexts:       src.lastGhostTexts,
     lastGhostBlockCount:  src.lastGhostBlockCount,
     lastGhostTimestamp:   src.lastGhostTimestamp,

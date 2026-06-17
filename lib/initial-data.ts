@@ -6,6 +6,7 @@ export const INITIAL_PROJECTS: Project[] = [
     name: "✨ New Research",
     blocks: [],
     collapsedIds: [],
-    ghostNotes: []
+    ghostNotes: [],
+    edges: [],
   }
 ]

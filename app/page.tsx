@@ -36,6 +36,8 @@ export interface Project {
   lastGhostTimestamp?: number
   /** Texts of recently generated ghost notes — passed back to the API to prevent near-duplicates */
   lastGhostTexts?: string[]
+  /** Edges (connections) between blocks in this project */
+  edges: { sourceBlockId: string; targetBlockId: string }[]
 }
 
 import { TileIndex } from "@/components/tile-index"
@@ -180,6 +182,7 @@ export default function Page() {
           blocks: blks,
           collapsedIds: collapsed,
           ghostNotes: [],
+          edges: [],
         }
         initialProjects = [defaultProject]
         initialActiveId = "default"
@@ -250,6 +253,7 @@ export default function Page() {
               blocks: [],
               collapsedIds: [],
               ghostNotes: [],
+              edges: [],
             })
           }
         }
@@ -272,6 +276,45 @@ export default function Page() {
           }
           localById.set(pid, { ...local, blocks: [...localBlockMap.values()] })
         }
+        // Merge edges from snapshot — also update blocks' influencedBy
+        if (snapshot.edges && snapshot.edges.length > 0) {
+          for (const [pid, local] of localById) {
+            const projectEdges = snapshot.edges.filter(
+              (e: any) => {
+                const src = local.blocks.find((b: any) => b.id === e.sourceBlockId)
+                const tgt = local.blocks.find((b: any) => b.id === e.targetBlockId)
+                return src && tgt
+              }
+            )
+            if (projectEdges.length > 0) {
+              // Build influencedBy from edges
+              const influencedByMap = new Map<string, Set<string>>()
+              for (const e of projectEdges) {
+                if (!influencedByMap.has(e.sourceBlockId)) influencedByMap.set(e.sourceBlockId, new Set())
+                influencedByMap.get(e.sourceBlockId)!.add(e.targetBlockId)
+              }
+              const updatedBlocks = local.blocks.map((b: any) => {
+                const ids = influencedByMap.get(b.id)
+                if (ids && ids.size > 0) {
+                  return { ...b, influencedBy: [...ids] }
+                }
+                return b
+              })
+              localById.set(pid, { ...local, edges: projectEdges, blocks: updatedBlocks })
+            }
+          }
+        }
+        // Merge ghost notes from snapshot
+        if (snapshot.ghostNotes && snapshot.ghostNotes.length > 0) {
+          for (const [pid, local] of localById) {
+            const projectGhosts = snapshot.ghostNotes.filter(
+              (g: any) => g.projectId === pid
+            )
+            if (projectGhosts.length > 0) {
+              localById.set(pid, { ...local, ghostNotes: projectGhosts })
+            }
+          }
+        }
         return [...localById.values()]
       })
     })
@@ -286,6 +329,7 @@ export default function Page() {
             blocks: [],
             collapsedIds: [],
             ghostNotes: [],
+            edges: [],
           }]
         })
       }
@@ -314,6 +358,192 @@ export default function Page() {
             blocks: p.blocks.map(b =>
               b.id === op.payload.id ? { ...b, ...op.payload } : b
             ),
+          }
+        }))
+      }
+      if (op.type === "edge:create") {
+        setProjects(prev => prev.map(p => {
+          // Find the project that contains both blocks
+          const hasSrc = p.blocks.some(b => b.id === op.payload.sourceBlockId)
+          const hasTgt = p.blocks.some(b => b.id === op.payload.targetBlockId)
+          if (!hasSrc || !hasTgt) return p
+          const exists = p.edges.some(
+            e => e.sourceBlockId === op.payload.sourceBlockId && e.targetBlockId === op.payload.targetBlockId
+          )
+          if (exists) return p
+          // Also update the source block's influencedBy
+          const updatedBlocks = p.blocks.map(b => {
+            if (b.id === op.payload.sourceBlockId) {
+              const influenced = b.influencedBy || []
+              if (influenced.includes(op.payload.targetBlockId)) return b
+              return { ...b, influencedBy: [...influenced, op.payload.targetBlockId] }
+            }
+            return b
+          })
+          return {
+            ...p,
+            blocks: updatedBlocks,
+            edges: [...p.edges, { sourceBlockId: op.payload.sourceBlockId, targetBlockId: op.payload.targetBlockId }],
+          }
+        }))
+      }
+      if (op.type === "edge:delete") {
+        setProjects(prev => prev.map(p => {
+          const hasSrc = p.blocks.some(b => b.id === op.payload.sourceBlockId)
+          const hasTgt = p.blocks.some(b => b.id === op.payload.targetBlockId)
+          if (!hasSrc || !hasTgt) return p
+          // Also update the source block's influencedBy
+          const updatedBlocks = p.blocks.map(b => {
+            if (b.id === op.payload.sourceBlockId && b.influencedBy) {
+              return { ...b, influencedBy: b.influencedBy.filter(id => id !== op.payload.targetBlockId) }
+            }
+            return b
+          })
+          return {
+            ...p,
+            blocks: updatedBlocks,
+            edges: p.edges.filter(
+              e => !(e.sourceBlockId === op.payload.sourceBlockId && e.targetBlockId === op.payload.targetBlockId)
+            ),
+          }
+        }))
+      }
+      if (op.type === "ghost:create") {
+        setProjects(prev => prev.map(p => {
+          if (p.id !== op.payload.projectId) return p
+          const exists = p.ghostNotes.some(g => g.id === op.payload.id)
+          if (exists) return p
+          return {
+            ...p,
+            ghostNotes: [...p.ghostNotes, op.payload],
+          }
+        }))
+      }
+      if (op.type === "project:delete") {
+        setProjects(prev => prev.filter(p => p.id !== op.payload.id))
+      }
+      if (op.type === "project:restore") {
+        // Project was soft-deleted and restored — re-add if not present
+        setProjects(prev => {
+          if (prev.some(p => p.id === op.payload.id)) return prev
+          return [...prev, {
+            id: op.payload.id,
+            name: op.payload.name || "Restored Space",
+            blocks: [],
+            collapsedIds: [],
+            ghostNotes: [],
+            edges: [],
+          }]
+        })
+      }
+      if (op.type === "block:delete") {
+        setProjects(prev => prev.map(p => {
+          if (p.id !== op.payload.projectId) return p
+          return {
+            ...p,
+            blocks: p.blocks.filter(b => b.id !== op.payload.id),
+            edges: p.edges.filter(e => e.sourceBlockId !== op.payload.id && e.targetBlockId !== op.payload.id),
+          }
+        }))
+      }
+      if (op.type === "block:restore") {
+        // Block was soft-deleted and restored — re-add if not present
+        setProjects(prev => prev.map(p => {
+          if (p.id !== op.payload.projectId) return p
+          const exists = p.blocks.some(b => b.id === op.payload.id)
+          if (exists) return p
+          return { ...p, blocks: [...p.blocks, op.payload] }
+        }))
+      }
+      if (op.type === "edge:restore") {
+        setProjects(prev => prev.map(p => {
+          const hasSrc = p.blocks.some(b => b.id === op.payload.sourceBlockId)
+          const hasTgt = p.blocks.some(b => b.id === op.payload.targetBlockId)
+          if (!hasSrc || !hasTgt) return p
+          const exists = p.edges.some(
+            e => e.sourceBlockId === op.payload.sourceBlockId && e.targetBlockId === op.payload.targetBlockId
+          )
+          if (exists) return p
+          const updatedBlocks = p.blocks.map(b => {
+            if (b.id === op.payload.sourceBlockId) {
+              const influenced = b.influencedBy || []
+              if (influenced.includes(op.payload.targetBlockId)) return b
+              return { ...b, influencedBy: [...influenced, op.payload.targetBlockId] }
+            }
+            return b
+          })
+          return {
+            ...p,
+            blocks: updatedBlocks,
+            edges: [...p.edges, { sourceBlockId: op.payload.sourceBlockId, targetBlockId: op.payload.targetBlockId }],
+          }
+        }))
+      }
+      if (op.type === "subtask:create") {
+        setProjects(prev => prev.map(p => {
+          if (p.id !== op.payload.projectId) return p
+          return {
+            ...p,
+            blocks: p.blocks.map(b => {
+              if (b.id !== op.payload.blockId) return b
+              const exists = (b.subTasks || []).some(st => st.id === op.payload.id)
+              if (exists) return b
+              return { ...b, subTasks: [...(b.subTasks || []), op.payload] }
+            }),
+          }
+        }))
+      }
+      if (op.type === "subtask:update") {
+        setProjects(prev => prev.map(p => {
+          if (p.id !== op.payload.projectId) return p
+          return {
+            ...p,
+            blocks: p.blocks.map(b => {
+              if (b.id !== op.payload.blockId) return b
+              return {
+                ...b,
+                subTasks: (b.subTasks || []).map(st =>
+                  st.id === op.payload.id ? { ...st, ...op.payload } : st
+                ),
+              }
+            }),
+          }
+        }))
+      }
+      if (op.type === "subtask:delete") {
+        setProjects(prev => prev.map(p => {
+          if (p.id !== op.payload.projectId) return p
+          return {
+            ...p,
+            blocks: p.blocks.map(b => {
+              if (b.id !== op.payload.blockId) return b
+              return { ...b, subTasks: (b.subTasks || []).filter(st => st.id !== op.payload.id) }
+            }),
+          }
+        }))
+      }
+      if (op.type === "subtask:restore") {
+        setProjects(prev => prev.map(p => {
+          if (p.id !== op.payload.projectId) return p
+          return {
+            ...p,
+            blocks: p.blocks.map(b => {
+              if (b.id !== op.payload.blockId) return b
+              const exists = (b.subTasks || []).some(st => st.id === op.payload.id)
+              if (exists) return b
+              return { ...b, subTasks: [...(b.subTasks || []), op.payload] }
+            }),
+          }
+        }))
+      }
+      if (op.type === "ghost:restore") {
+        setProjects(prev => prev.map(p => {
+          if (p.id !== op.payload.projectId) return p
+          const exists = p.ghostNotes.some(g => g.id === op.payload.id)
+          if (exists) return p
+          return {
+            ...p,
+            ghostNotes: [...p.ghostNotes, op.payload],
           }
         }))
       }
@@ -369,6 +599,23 @@ export default function Page() {
               isUnrelated: block.isUnrelated ?? false,
             },
           })
+        }
+        // Send edges — derive from blocks' influencedBy
+        const sentEdges = new Set<string>()
+        for (const block of project.blocks) {
+          if (!block.influencedBy) continue
+          for (const targetId of block.influencedBy) {
+            const key = [block.id, targetId].sort().join("§")
+            if (sentEdges.has(key)) continue
+            sentEdges.add(key)
+            client.sendOp({
+              type: "edge:create",
+              payload: {
+                sourceBlockId: block.id,
+                targetBlockId: targetId,
+              },
+            })
+          }
         }
       }
     }, 2000)
@@ -901,6 +1148,7 @@ export default function Page() {
       blocks: [],
       collapsedIds: [],
       ghostNotes: [],
+      edges: [],
     }
     setProjects(prev => [...prev, newProject])
     setActiveProjectId(newProject.id)

@@ -4,11 +4,11 @@
 
 export interface SyncOp {
   type:
-    | "project:create" | "project:update" | "project:delete"
-    | "block:create" | "block:update" | "block:delete"
-    | "edge:create" | "edge:delete"
-    | "subtask:create" | "subtask:update" | "subtask:delete"
-    | "ghost:create" | "ghost:delete"
+    | "project:create" | "project:update" | "project:delete" | "project:restore" | "project:purge"
+    | "block:create" | "block:update" | "block:delete" | "block:restore" | "block:purge"
+    | "edge:create" | "edge:delete" | "edge:restore"
+    | "subtask:create" | "subtask:update" | "subtask:delete" | "subtask:restore"
+    | "ghost:create" | "ghost:delete" | "ghost:restore"
   payload: any
 }
 
