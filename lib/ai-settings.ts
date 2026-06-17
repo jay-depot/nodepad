@@ -224,6 +224,7 @@ export async function fetchModelsFromProvider(
         owned_by: "ollama",
         isFree: true,
         contextLength: m.details?.family === "llama" ? 4096 : undefined,
+        supportsGrounding: true,  // Ollama 0.5+ supports web search; fail gracefully if not
       }))
     } catch {
       return []
@@ -310,7 +311,7 @@ export function loadAIConfig(): AIConfig | null {
   const modelId = model?.id ?? models[0]?.id ?? s.modelId ?? DEFAULT_MODEL_ID
   // Z.ai does not support grounding; only openrouter and openai do
   const supportsGrounding =
-    (s.provider === "openrouter" || s.provider === "openai") &&
+    (s.provider === "openrouter" || s.provider === "openai" || s.provider === "ollama") &&
     s.webGrounding &&
     (model?.supportsGrounding ?? false)
   return { apiKey: s.apiKey, modelId, supportsGrounding, provider: s.provider, customBaseUrl: s.customBaseUrl }

@@ -280,6 +280,9 @@ export async function enrichBlockClient(
       const modelDef = getModelsForProvider("openai").find(m => m.id === config.modelId)
       if (modelDef?.groundingModelId) model = modelDef.groundingModelId
       webSearchOptions = {}
+    } else if (config.provider === "ollama") {
+      // Ollama 0.5+ supports web_search_options; older versions silently ignore it
+      webSearchOptions = {}
     }
   }
 
@@ -407,24 +410,37 @@ You have live web access. For this note type, include 1–2 real source citation
   }
 
   // Extract clickable source links from response annotations.
-  // Both OpenRouter :online and OpenAI search-preview return citations as
-  // annotations on the message object — not inside the JSON content itself.
-  const annotations: Array<{ type: string; url_citation?: { url: string; title?: string } }> =
-    ((data.choices as Array<{ message?: { annotations?: unknown[] } }>)?.[0]?.message?.annotations ?? []) as Array<{ type: string; url_citation?: { url: string; title?: string } }>
+  // OpenRouter :online and OpenAI search-preview return citations as
+  // annotations on the message object. Ollama returns them in message.context.citations.
   const seen = new Set<string>()
-  const sources = annotations
-    .filter(a => a.type === "url_citation" && a.url_citation?.url)
-    .map(a => {
-      const { url, title } = a.url_citation!
+  const sources: { url: string; title: string; siteName: string }[] = []
+
+  // Ollama format: message.context.citations = ["https://...", ...]
+  const ollamaCitations: string[] | undefined =
+    (data.choices as Array<{ message?: { context?: { citations?: string[] } } }>)?.[0]?.message?.context?.citations
+  if (ollamaCitations) {
+    for (const url of ollamaCitations) {
+      if (seen.has(url)) continue
+      seen.add(url)
       let siteName = ""
       try { siteName = new URL(url).hostname.replace(/^www\./, "") } catch { /* ignore */ }
-      return { url, title: title || siteName, siteName }
-    })
-    .filter(s => {
-      if (seen.has(s.url)) return false
-      seen.add(s.url)
-      return true
-    })
+      sources.push({ url, title: siteName, siteName })
+    }
+  }
+
+  // OpenAI/OpenRouter format: message.annotations[].url_citation
+  const annotations: Array<{ type: string; url_citation?: { url: string; title?: string } }> =
+    ((data.choices as Array<{ message?: { annotations?: unknown[] } }>)?.[0]?.message?.annotations ?? []) as Array<{ type: string; url_citation?: { url: string; title?: string } }>
+  for (const a of annotations) {
+    if (a.type === "url_citation" && a.url_citation?.url) {
+      const { url, title } = a.url_citation
+      if (seen.has(url)) continue
+      seen.add(url)
+      let siteName = ""
+      try { siteName = new URL(url).hostname.replace(/^www\./, "") } catch { /* ignore */ }
+      sources.push({ url, title: title || siteName, siteName })
+    }
+  }
 
   if (sources.length > 0) result.sources = sources
 
